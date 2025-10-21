@@ -1,0 +1,25 @@
+geo:
+  enable: true
+  random_resized_crop: false
+  rrc_size: [224, 224]
+  rrc_scale: [0.8, 1.0]
+  rotate_limit: 0
+  hflip: false
+  vflip: false
+
+color:
+  enable: false
+  use_rand_stain_jitter: false
+  brightness: 0.0
+  contrast: 0.0
+  saturation: 0.0
+  hue: 0.0
+  colorjitter_p: 0.0
+  rsj:
+    mode: "rgb_affine"
+    p: 0.0
+    alpha_range: [1.0, 1.0]
+    beta_range: [0.0, 0.0]
+    lab_delta_L: 0.0
+    lab_delta_ab: 0.0
+    mix_strength: 0.0

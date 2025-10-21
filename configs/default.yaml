@@ -1,0 +1,51 @@
+paths:
+  project_root: "D:/Desktop/wsi_st_project"
+  data_root: "D:/Desktop/WSI_out/Normalized_flat"
+  labels_csv: "D:/Desktop/WSI_out/zscore_results/train_labels_zscore.csv"
+  outputs_dir: "outputs"
+  checkpoints_dir: "outputs/checkpoints"
+  preds_dir: "outputs/preds"
+  reports_dir: "reports"
+
+model:
+  backbone: "DenseNet121"
+  in_dim: 1024
+  num_genes: 250
+  num_cellmix: 0
+  use_frontdoor: false
+  frontdoor_weight: 0.0
+
+train:
+  batch_size: 128
+  num_workers: 2
+  seed: 1337
+  max_steps: 0
+  loss:
+    gene_huber_weight: 1.0
+    gene_corr_weight: 0.3
+    huber_delta: 1.0
+    cellmix_loss: "mse"
+    cellmix_weight: 0.0
+  optim:
+    lr: 1.0e-3
+    weight_decay: 1.0e-4
+  trainer:
+    print_freq: 1
+    epochs: 30
+    save_interval_epochs: 1
+    eval_interval: 1
+    save_dir: ""
+    auroc_quantile: 0.25
+
+eval:
+  split: "val"
+  auroc_percentile: 25
+  ood:
+    by: "none"
+  export_cellmix: false
+
+augmentation:
+  config: "configs/augment.yaml"
+
+causal:
+  config: "configs/causal.yaml"

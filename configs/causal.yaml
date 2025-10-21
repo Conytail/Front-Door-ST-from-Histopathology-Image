@@ -1,0 +1,68 @@
+paths:
+  image_root: "D:/Desktop/WSI_out/Normalized_flat"
+  labels_csv: "D:/Desktop/WSI_out/zscore_results/train_labels_zscore.csv"
+  m_student: "D:/Desktop/M-Teacher/outputs/cellmix_student/M_student.csv"
+  m_teacher: "D:/Desktop/M-Teacher/outputs/teacher/teacher_intersect_simplex.csv"
+  image_template: "{spot_id}.png"
+  spot_id_lower: true
+
+model:
+  backbone: "DenseNet121"
+  num_genes: 250
+  num_cellmix: 9
+  use_frontdoor: true
+
+train:
+  batch_size: 32
+  num_workers: 4
+  seed: 1337
+  max_steps: 0
+  train_frac: 0.8
+  loss:
+    gene_huber_weight: 1.0
+    gene_corr_weight: 0.3
+    huber_delta: 1.0
+  optim:
+    lr: 1.0e-3
+    weight_decay: 1.0e-4
+  trainer:
+    print_freq: 10
+    epochs: 15
+    save_interval_epochs: 1
+    eval_interval: 20
+    auroc_quantile: 0.25
+
+frontdoor:
+  enable: true
+  use_teacher_forcing: true
+  warmup_epochs: 5
+  transition_epochs: 10
+  detach_cell_head: true
+  fusion_mode: "FiLM"
+  gated: false
+  lin_from_cellmix: true
+  residual_hidden: [512, 256]
+  loss:
+    huber_delta: 1.0
+    lambda_corr: 0.3
+  cf:
+    enable: true
+    weight: 0.2
+
+cf:
+  enable: false
+  warmup_epochs: 1
+  weight: 0.0
+  backprop_masked: false
+  apply_prob: 0.0
+  strategy: "random_blocks"
+  random_blocks:
+    num_blocks: 0
+    block_size: 0
+    area_ratio: 0.0
+    fill: "zeros"
+    gaussian_std: 0.0
+
+augmentation:
+  config: "configs/augment.yaml"
+
