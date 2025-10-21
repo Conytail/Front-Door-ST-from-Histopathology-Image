@@ -1,338 +1,129 @@
-<p align="center">
-   <img src="https://github.com/BayraktarLab/cell2location/blob/master/docs/logo.svg?raw=True" width="200">
-</p>
+# WSI → ST Gene Expression with Front-door Mediation
 
-### Comprehensive mapping of tissue cell architecture via integrated single cell and spatial transcriptomics (cell2location model)
+This project predicts spatial transcriptomics (ST) gene expression (top‑250 genes) from H&E tissue patches. We leverage a causal front‑door design: image features X drive a mediator M (cell‑type composition) which in turn informs gene expression Y. The mediator combines a teacher distribution from cell2location (trained on scRNA‑seq of 26 donors) and a student regressor from the 23 donors used for training/validation.
 
-[![Stars](https://img.shields.io/github/stars/BayraktarLab/cell2location?logo=GitHub&color=yellow)](https://github.com/BayraktarLab/cell2location/stargazers)
-![Build Status](https://github.com/BayraktarLab/cell2location/actions/workflows/test.yml/badge.svg?event=push)
-[![Documentation Status](https://readthedocs.org/projects/cell2location/badge/?version=latest)](https://cell2location.readthedocs.io/en/stable/?badge=latest)
-[![Downloads](https://pepy.tech/badge/cell2location)](https://pepy.tech/project/cell2location)
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/BayraktarLab/cell2location/blob/master/docs/notebooks/cell2location_tutorial.ipynb)
-[![Docker image on quay.io](https://img.shields.io/badge/container-quay.io/vitkl/cell2location-brightgreen "Docker image on quay.io")](https://quay.io/vitkl/cell2location) 
+Key validation result (n=250 genes): per‑gene Spearman median improves from 0.493 (baseline) to 0.570 (front‑door), Δ=+0.0585; improved genes 95.2% (238/250); one‑sided sign test p≈5.54×10^-56. See `reports/compare_val.json`, `reports/gene_eval_*.json`, and figures under `reports/`.
 
-If you use cell2location please cite our paper: 
-
-Kleshchevnikov, V., Shmatko, A., Dann, E. et al. Cell2location maps fine-grained cell types in spatial transcriptomics. Nat Biotechnol (2022). https://doi.org/10.1038/s41587-021-01139-4
-https://www.nature.com/articles/s41587-021-01139-4
-
-Please note that cell2locations requires 2 user-provided hyperparameters (N_cells_per_location and detection_alpha) - for detailed guidance on setting these hyperparameters and their impact see [the flow diagram and the note](https://github.com/BayraktarLab/cell2location/blob/master/docs/images/Note_on_selecting_hyperparameters.pdf). Many real datasets (especially human) show within-slide variability in RNA detection sensitivity - requiring you to try both recommended settings of the `detection_alpha` parameter: `detection_alpha=200` for low within-slide technical variability and `detection_alpha=20` for high within-slide technical variability.
-
-Cell2location is a principled Bayesian model that can resolve fine-grained cell types in spatial transcriptomic data and create comprehensive cellular maps of diverse tissues. Cell2location accounts for technical sources of variation and borrows statistical strength across locations, thereby enabling the integration of single cell and spatial transcriptomics with higher sensitivity and resolution than existing tools. This is achieved by estimating which combination of cell types in which cell abundance could have given the mRNA counts in the spatial data, while modelling technical effects (platform/technology effect, contaminating RNA, unexplained variance).
-
-<p align="center">
-   <img src="https://github.com/BayraktarLab/cell2location/blob/master/docs/images/Fig1_v2_white_bg.png?raw=True">
-</p>
-Overview of the spatial mapping approach and the workflow enabled by cell2location. From left to right: Single-cell RNA-seq and spatial transcriptomics profiles are generated from the same tissue (1). Cell2location takes scRNA-seq derived cell type reference signatures and spatial transcriptomics data as input (2, 3). The model then decomposes spatially resolved multi-cell RNA counts matrices into the reference signatures, thereby establishing a spatial mapping of cell types (4).    
-
-## Usage and Tutorials
-
-The tutorial covering the estimation of expresson signatures of reference cell types, spatial mapping with cell2location and the downstream analysis can be found here and tried on [Google Colab](https://colab.research.google.com/github/BayraktarLab/cell2location/blob/master/docs/notebooks/cell2location_tutorial.ipynb): https://cell2location.readthedocs.io/en/latest/
-
-Please report bugs via https://github.com/BayraktarLab/cell2location/issues and ask any usage questions about [cell2location](https://discourse.scverse.org/c/ecosytem/cell2location/42), [scvi-tools](https://discourse.scverse.org/c/help/scvi-tools/7) or [Visium data](https://discourse.scverse.org/c/general/visium/32) in scverse community discourse.
-
-Cell2location package is implemented in a general way (using https://pyro.ai/ and https://scvi-tools.org/) to support multiple related models - both for spatial mapping, estimating reference cell type signatures and downstream analysis.
+## Contents
+- Models: `models/` (DenseNet121 backbone, front‑door fusion, linear+residual heads)
+- Losses: `losses/` (masked Huber, correlation, cell‑mix loss)
+- Data: `data/` (dataset and transforms)
+- Training: `train/` (trainer, evaluator)
+- Experiments: `scripts/` (training, evaluation, reporting)
+- Configs: `configs/` (`default.yaml`, `causal.yaml`)
+- Reports and artifacts: `reports/`, `outputs/`
 
 ## Installation
-
-We suggest using a separate conda environment for installing cell2location.
-
-Create conda environment and install `cell2location` package
+Requires Python 3.10+ and a CUDA‑capable GPU for best performance.
 
 ```bash
-conda create -y -n cell2loc_env python=3.10
-
-conda activate cell2loc_env
-pip install cell2location[tutorials]
+pip install -r requirements.txt
 ```
 
-Finally, to use this environment in jupyter notebook, add jupyter kernel for this environment:
+## Data & Paths
+Configure paths in YAML:
+- Images (224×224 patches): `configs/default.yaml: paths.data_root` or `configs/causal.yaml: paths.image_root`
+- Labels (z‑scored top‑250 genes): `paths.labels_csv`
+- Mediator cell‑mix:
+  - Student: `configs/causal.yaml: paths.m_student` (CSV with 9 columns summing to 1)
+  - Teacher: `configs/causal.yaml: paths.m_teacher` (CSV with 9 columns summing to 1)
 
+Example inputs (adjust to your environment):
+- Images: `D:/Desktop/WSI_out/Normalized_flat`
+- Labels: `D:/Desktop/WSI_out/zscore_results/train_labels_zscore.csv`
+- M_student: `D:/Desktop/M-Teacher/outputs/cellmix_student/M_student.csv`
+- M_teacher: `D:/Desktop/M-Teacher/outputs/teacher/teacher_intersect_simplex.csv`
+
+## Front‑door Model (high‑level)
+Let X be image patches, Z=g_φ(X) DenseNet features, M the 9‑D cell‑type composition, and Y∈R^{250} gene scores. The predictor is
+
+Ŷ = W_M·M_t + f_θ(FiLM(Z, M_t)), with teacher‑forcing schedule α_t:
+α_t=1 (epochs ≤5), then linearly 1→0 (5<epochs≤15), α_t=0 afterwards; M_t = α_t·M_teacher + (1−α_t)·M_student.
+
+Loss = masked Huber(Ŷ,Y;Ω) + λ·masked Corr(Ŷ,Y;Ω). Metrics: per‑gene Spearman and Pearson on validation spots.
+
+## Quickstart
+Baseline (no front‑door):
 ```bash
-conda activate cell2loc_env
-python -m ipykernel install --user --name=cell2loc_env --display-name='Environment (cell2loc_env)'
+# Option A: dedicated baseline script (uses configs/default.yaml)
+python scripts/train_baseline.py
+
+# Option B: causal trainer with front-door disabled via CLI overrides
+python scripts/train_causal.py --config configs/causal.yaml \
+  --override frontdoor.enable=false --override model.use_frontdoor=false
 ```
 
-If you do not have conda please install Miniconda first:
-
+Front‑door training:
 ```bash
-cd /path/to/software
-wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
-bash Miniconda3-latest-Linux-x86_64.sh
-# use prefix /path/to/software/miniconda3
+python scripts/train_causal.py --config configs/causal.yaml
 ```
 
-Before installing cell2location and it's dependencies, it could be necessary to make sure that you are creating a fully isolated conda environment by telling python to NOT use user site for installing packages by running this line before creating conda environment and every time before activatin conda environment in a new terminal session:
-
+Evaluation and comparison:
 ```bash
-export PYTHONNOUSERSITE="literallyanyletters"
+# Compare two JSON metric reports and output figures+summary
+python scripts/eval_gene.py \
+  --baseline reports/gene_eval_baseline_val.json \
+  --frontdoor reports/gene_eval_frontdoor_val.json \
+  --out reports/compare_val.json \
+  --fig_dir reports
 ```
 
-
-## Documentation and API details
-
-User documentation is availlable on https://cell2location.readthedocs.io/en/latest/. 
-
-Cell2location architecture is designed to simplify extended versions of the model that account for additional technical and biologial information. We plan to provide a tutorial showing how to add new model classes but please get in touch if you would like to contribute or build on top our package.
-
-## Acknowledgements 
-
-We thank all paper authors for their contributions:
-Vitalii Kleshchevnikov, Artem Shmatko, Emma Dann, Alexander Aivazidis, Hamish W King, Tong Li, Artem Lomakin, Veronika Kedlian, Mika Sarkin Jain, Jun Sung Park, Lauma Ramona, Liz Tuck, Anna Arutyunyan, Roser Vento-Tormo, Moritz Gerstung, Louisa James, Oliver Stegle, Omer Ali Bayraktar
-
-We also thank Pyro developers (Fritz Obermeyer, Martin Jankowiak), Krzysztof Polanski, Luz Garcia Alonso, Carlos Talavera-Lopez, Ni Huang for feedback on the package, Martin Prete for dockerising cell2location and other software support.
-
-## FAQ
-
-See https://github.com/BayraktarLab/cell2location/discussions
-
-## Future development and experimental features
-Future developments of cell2location are focused on 1) scalability to 100k-mln+ locations using amortised inference of cell abundance (same ideas as used in VAE), 2) extending cell2location to related spatial analysis tasks that require modification of the model (such as using cell type hierarchy information), and 3) incorporating features presented by more recently proposed methods (such as CAR spatial proximity modelling). We are also experimenting with Numpyro and JAX (https://github.com/vitkl/cell2location_numpyro).
-
-## Tips
-
-### Conda environment for A100 GPUs
-
+Marker vs non‑marker grouped analysis and interpretability:
 ```bash
-export PYTHONNOUSERSITE="True"
-conda create -y -n cell2location_cuda118_torch22 python=3.10
-conda activate cell2location_cuda118_torch22
+# Grouped ΔSpearman statistics + boxplot
+python scripts/make_marker_group_analysis.py
 
-pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
-
-pip3 install scvi-tools==1.1.2
-
-pip install git+https://github.com/BayraktarLab/cell2location.git#egg=cell2location[tutorials,dev]
-python -m ipykernel install --user --name=cell2location_cuda118_torch22 --display-name='Environment (cell2location_cuda118_torch22)'
+# Grad-CAM overlays for selected genes on validation samples
+python scripts/make_interpretability.py
 ```
 
-### Issues with package version mismatches often originate from python user site rather than conda environment being used to install a subset of packages
+Outputs:
+- Summary: `reports/compare_val.json`
+- Per‑gene metrics: `reports/gene_eval_baseline_val.json`, `reports/gene_eval_frontdoor_val.json`
+- Figures: `reports/spearman_*.png`, `reports/marker_group_boxplot.png`, `reports/interpretability/sample_cam_grid.png`
 
-Before installing cell2location and it's dependencies, it could be necessary to make sure that you are creating a fully isolated conda environment by telling python to NOT use user site for installing packages by running this line before creating conda environment and every time before activatin conda environment in a new terminal session:
+## Configuration
+Edit `configs/causal.yaml` to control data locations, model size, and front‑door schedule:
+- `paths`: image root, labels CSV, `m_student`, `m_teacher`, image template
+- `model`: `num_genes`, `num_cellmix`, `use_frontdoor`
+- `frontdoor`: `enable`, `use_teacher_forcing`, `warmup_epochs`, `transition_epochs`, `fusion_mode` (FiLM/concat), `detach_cell_head`
+- `train`: `batch_size`, `num_workers`, `seed`, epochs/print/save intervals, optimizer hyper‑parameters
+- `augmentation`: external YAML (e.g., `configs/augment.yaml`)
 
+Example CLI overrides (dot notation) with `train_causal.py`:
 ```bash
-export PYTHONNOUSERSITE="True"
+# Change batch size and warmup/transition
+python scripts/train_causal.py --config configs/causal.yaml \
+  --override train.batch_size=64 \
+  --override frontdoor.warmup_epochs=3 \
+  --override frontdoor.transition_epochs=7
 ```
 
-### Useful code for reading and combining multiple Visium sections
+## Training Details (reproduced)
+- Optimizer: AdamW (lr=1.0e-3, weight decay=1.0e-4), batch size 32, 15 epochs
+- LR schedule: none; early stopping: none; seed: 1337
+- Backbone: DenseNet121 (no ImageNet pretraining), global pooling
+- Input: 224×224 RGB, offline stain normalization + [0,1] scaling
+- Augmentation: none (no rotation/flip/color jitter) for mediator consistency
+- Hardware: single NVIDIA GeForce RTX 5060 (8 GB, CUDA 12.8)
+- Runtime: ≈20–40 min for 15 epochs (train split ≈24.7k spots)
+- Inference: ≈300–500 spots/s on the same GPU (batch=64; hardware dependent)
 
-Keeping info on distinct sections in a csv file (Google Sheet).
+## Results (validation)
+- Spearman (median): baseline 0.493 → front‑door 0.570 (Δ=+0.0585)
+- Improved genes: 95.2% (238/250); one‑sided paired sign test p≈5.54×10^-56
+- Error metrics (lower is better): masked Huber 0.334 → 0.287; masked corr‑loss 0.539 → 0.438
+- Grouped ΔSpearman (median; 95% bootstrap CI):
+  - Marker (n=60): +0.0776 [0.0650, 0.0890], p≈5.29×10^-17
+  - Non‑marker (n=190): +0.0526 [0.0473, 0.0600], p≈1.47×10^-40
 
-```python
-sample_annot = pd.read_csv('./sample_annot.csv')
+## Tips & Troubleshooting
+- Ensure `m_student` and `m_teacher` CSVs align with `labels_csv` indices (case‑handling via `spot_id_lower`). Rows must sum ≈1.
+- Missing images or mis‑matched IDs will raise errors in the dataset loader.
+- To run on CPU (slow), set CUDA invisible; to change batch size, use `--override train.batch_size=...`.
 
-from glob import glob
-sample_annot['path'] = pd.Series(
-    glob(f'{sp_data_folder}*'),
-    index=[sub('^.+WTSI_', '', sub('_GRCh38-2020-A$', '', i)) for i in glob(f'{sp_data_folder}*')]
-)[sample_annot['Sample_ID']].values
-import os
-sample_annot['file'] = [os.path.basename(i) for i in sample_annot['path']]
+## Acknowledgments
+- ST‑net inspiration for WSI→gene prediction.
+- cell2location for mediator estimation from scRNA‑seq.
+- M‑Teacher pipeline for producing teacher and student cell‑mix distributions.
 
-sample_annot['Sample_ID'].unique()
-```
-
-Reading and concatenating samples.
-
-```python
-def read_and_qc(sample_name, file, path=sp_data_folder):
-    """
-    Read one Visium file and add minimum metadata and QC metrics to adata.obs
-    NOTE: var_names is ENSEMBL ID as it should be, you can always plot with sc.pl.scatter(gene_symbols='SYMBOL')
-    """
-    
-    adata = sc.read_visium(path + str(file) +'/',
-                           count_file='filtered_feature_bc_matrix.h5',
-                           load_images=True)
-    adata.obs['sample'] = sample_name
-    adata.var['SYMBOL'] = adata.var_names
-    adata.var.rename(columns={'gene_ids': 'ENSEMBL'}, inplace=True)
-    adata.var_names = adata.var['ENSEMBL']
-    adata.var.drop(columns='ENSEMBL', inplace=True)
-    
-    # just in case there are non-unique ENSEMBL IDs
-    adata.var_names_make_unique()
-
-    # Calculate QC metrics
-    sc.pp.calculate_qc_metrics(adata, inplace=True)
-    adata.var['mt'] = [gene.startswith('mt-') for gene in adata.var['SYMBOL']]
-    adata.obs['mt_frac'] = adata[:, adata.var['mt'].tolist()].X.sum(1).A.squeeze()/adata.obs['total_counts']
-    
-    # add sample name to obs names
-    adata.obs["sample"] = [str(i) for i in adata.obs['sample']]
-    adata.obs_names = 's' + adata.obs["sample"] \
-                          + '_' + adata.obs_names
-    adata.obs.index.name = 'spot_id'
-    
-    file = list(adata.uns['spatial'].keys())[0]
-    adata.uns['spatial'][sample_name] = adata.uns['spatial'][file].copy()
-    del adata.uns['spatial'][file]
-    print(adata.uns['spatial'].keys())
-    
-    return adata
-
-def read_all_and_qc(
-    sample_annot, Sample_ID_col, file_col, sp_data_folder, 
-    count_file='filtered_feature_bc_matrix.h5',
-):
-    """
-    Read and concatenate all Visium files.
-    """
-    # read first sample
-    adata = read_and_qc(
-        sample_annot[Sample_ID_col][0], sample_annot[file_col][0], 
-        path=sp_data_folder
-    ) 
-
-    # read the remaining samples
-    slides = {}
-    for i, s in enumerate(sample_annot[Sample_ID_col][1:]):
-        adata_1 = read_and_qc(s, sample_annot[file_col][i], path=sp_data_folder) 
-        slides[str(s)] = adata_1
-
-    adata_0 = adata.copy()
-
-    # combine individual samples
-    #adata = adata.concatenate(list(slides.values()), index_unique=None)
-    adata = adata.concatenate(
-        list(slides.values()),
-        batch_key="sample",
-        uns_merge="unique",
-        batch_categories=sample_annot[Sample_ID_col], 
-        index_unique=None
-    )
-
-    sample_annot.index = sample_annot[Sample_ID_col]
-    for c in sample_annot.columns:
-        sample_annot.loc[:, c] = sample_annot[c].astype(str)
-    adata.obs[sample_annot.columns] = sample_annot.reindex(index=adata.obs['sample']).values
-    
-    return adata
-    
-adata = read_all_and_qc(
-    sample_annot=sample_annot, 
-    Sample_ID_col='Sample_ID', 
-    file_col='file', 
-    sp_data_folder=sp_data_folder, 
-    count_file='filtered_feature_bc_matrix.h5',
-)
-
-adata_incl_nontissue = read_all_and_qc(
-    sample_annot=sample_annot, 
-    Sample_ID_col='Sample_ID', 
-    file_col='file', 
-    sp_data_folder=sp_data_folder, 
-    count_file='raw_feature_bc_matrix.h5',
-)
-```
-
-Since Version 0.9.0 (released on 2023-04-11), the function `AnnData.concatenate()` has been deprecated in favour of `anndata.concat()` as per the official release notes ([Reference](https://anndata.readthedocs.io/en/latest/release-notes/index.html#id4)). Here is the updated code snippet of `read_all_and_qc`:
-
-```python
-from anndata import concat
-
-def read_all_and_qc(
-    sample_annot, Sample_ID_col, file_col, sp_data_folder, 
-    count_file='filtered_feature_bc_matrix.h5',
-):
-    """
-    Read and concatenate all Visium files.
-    """
-
-    # read all samples and store them in a list
-    adatas = []
-    for i, s in enumerate(sample_annot[Sample_ID_col]):
-        adata_i = read_and_qc(s, Sample_ID_col[file_col][i], path=sp_data_folder) 
-        adatas.append(adata_i)
-    # combine individual samples
-    adata = concat(
-        adatas,
-        merge="unique",
-        uns_merge="unique",
-        label="batch",
-        keys=sample_annot[Sample_ID_col].tolist(), 
-        index_unique=None
-    )
-
-    sample_annot.index = sample_annot[Sample_ID_col]
-    for c in sample_annot.columns:
-        sample_annot.loc[:, c] = sample_annot[c].astype(str)
-    adata.obs[sample_annot.columns] = sample_annot.reindex(index=adata.obs['sample']).values
-
-    return adata
-
-adata = read_all_and_qc(
-    sample_annot=sample_annot, 
-    Sample_ID_col='Sample_ID', 
-    file_col='file', 
-    sp_data_folder=sp_data_folder, 
-    count_file='filtered_feature_bc_matrix.h5',
-)
-
-cell2location.models.Cell2location.setup_anndata(
-    adata=adata_vis,
-    batch_key="batch")
-```
-
-## Stage 1 – Teacher Label Preparation
-
-This repository now ships a dedicated utility for curating teacher labels from
-cell2location outputs. The workflow consumes the posterior summaries
-(`means_cell_abundance_w_sf.csv`, `q05_cell_abundance_w_sf.csv`,
-`q95_cell_abundance_w_sf.csv`) together with slide coordinates and produces two
-ready-to-use datasets:
-
-- **teacher_all** – normalised simplex weights for every spot (~68k), intended
-  for QC and statistical inspection on the teacher side.
-- **teacher_intersect** – the subset aligned with WSI coordinates
-  (~30 656 spots), used for student training and downstream integration.
-
-### Preparing the taxonomy file
-
-Create a YAML file describing how external cell types map to your canonical
-schema:
-
-```yaml
-canonical_order: [TypeA, TypeB, TypeC]
-mapping:
-  Cancer Epithelial: TypeA
-  Myeloid: TypeB
-  CAFs: TypeC
-drop_unmapped: false
-```
-
-Set `drop_unmapped` to `true` if any unmapped columns should be discarded
-instead of being zeroed out (the unmapped ratio is still reported in QC).
-
-### Running the script
-
-```bash
-python scripts/prepare_teacher.py \
-  --means path/to/means_cell_abundance_w_sf.csv \
-  --q05 path/to/q05_cell_abundance_w_sf.csv \
-  --q95 path/to/q95_cell_abundance_w_sf.csv \
-  --coords path/to/coords_dir_or_csv \
-  --taxonomy configs/taxonomy.yaml \
-  --config configs/prepare_teacher.yaml \
-  --in_tissue_col in_tissue \
-  --ids_case_sensitive false \
-  --spot_id_format colxrow
-```
-
-Outputs are written to `outputs/teacher/` (configurable via the YAML) and
-include:
-
-- `teacher_all_simplex.csv`, `teacher_all_weight.csv`
-- `teacher_intersect_simplex.csv`, `teacher_intersect_weight.csv`
-- `teacher_dropped_ids.txt`
-- `reports/teacher_qc.json`, `reports/teacher_qc.md`
-
-### Common issues
-
-- **Missing taxonomy entries**: ensure that every column in the cell2location
-  matrix either appears in `mapping` or that `drop_unmapped` is set to `false`.
-- **Row sums deviating from 1**: the script enforces strict normalisation; if
-  the QC gate fails, inspect the raw means for negative values or NaNs.
-- **Empty intersection**: check that spot identifiers in the coordinate CSV
-  follow the same `spot_id_format` (e.g. `colxrow` vs `rowxcol`) and case rules
-  as the cell2location output.
